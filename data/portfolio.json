@@ -1,0 +1,20 @@
+{
+    "name": "Gxlcy",
+    "cash_balance": 6521.95,
+    "holdings": {
+        "META": [
+            {
+                "qty": 2,
+                "price": 705.3,
+                "sector": "Communication Services"
+            }
+        ],
+        "TSLA": [
+            {
+                "qty": 5,
+                "price": 413.49,
+                "sector": "Consumer Cyclical"
+            }
+        ]
+    }
+}
