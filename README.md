@@ -43,7 +43,7 @@ python src/main.py
 
 ## **Project Structure**
 ```bash
-tradelab_cli/
+TradeLab/
 ├── data/                  # JSON files
 ├── src/                   # Source code
 │   ├── main.py            # Entry point
