@@ -20,7 +20,7 @@
 - 📊 **Portfolio Tracking:** Monitor your holdings and portfolio value in real-time.  
 - ⚖️ **Risk & Diversification:** Analyze portfolio beta, volatility, and sector allocation.  
 - 🧠 **Smart Insights:** Get actionable advice and warnings about concentration, valuation, and risk.  
-- 🎨 **Professional CLI Interface:** Color-coded tables, separators, and optional mini charts for a clean, hacker-style look.  
+- 🎨 **Professional CLI Interface:** Color-coded tables, separators for a clean, hacker-style look.  
 - 🏫 **Learn to Trade:** Experiment safely and develop trading skills with real market data.
 
 ---
