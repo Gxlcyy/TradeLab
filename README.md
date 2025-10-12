@@ -1,8 +1,8 @@
-# TradeLab CLI
+# TradeLab
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://www.python.org/)  [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)  
 
-**TradeLab CLI** is a terminal-based trading simulator designed for beginners and aspiring investors. Practice buying and selling stocks, track your virtual portfolio, analyze risk, and gain actionable insights — all within a professional CLI environment. Perfect for learning how to trade without risking real money.
+**TradeLab** is a terminal-based trading simulator designed for beginners and aspiring investors. Practice buying and selling stocks, track your virtual portfolio, analyze risk, and gain actionable insights — all within a professional CLI environment. Perfect for learning how to trade without risking real money.
 
 ---
 
@@ -29,8 +29,8 @@
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/Gxlcyy/tradelab_cli.git
-cd tradelab_cli
+git clone https://github.com/Gxlcyy/TradeLab.git
+cd TradeLab
 ```
 2. **Install dependencies**
 ```bash
