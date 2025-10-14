@@ -15,11 +15,11 @@
 ---
 
 ## **Features**
-
 - 💹 **Simulated Trading:** Buy and sell stocks using virtual funds with live prices.  
 - 📊 **Portfolio Tracking:** Monitor your holdings and portfolio value in real-time.  
 - ⚖️ **Risk & Diversification:** Analyze portfolio beta, volatility, and sector allocation.  
 - 🧠 **Smart Insights:** Get actionable advice and warnings about concentration, valuation, and risk.  
+- 👤 **Multi-User Support** Create and switch between different accounts.
 - 🎨 **Professional CLI Interface:** Color-coded tables, separators for a clean, hacker-style look.  
 - 🏫 **Learn to Trade:** Experiment safely and develop trading skills with real market data.
 
