@@ -4,10 +4,11 @@ from rich.console import Console
 
 console = Console()
 
-def generate_insights():
+def generate_insights(username):
     with open('data/portfolio.json', 'r') as f:
         portfolio = json.load(f)
-        holdings = portfolio.get("holdings", {})
+
+    holdings = portfolio[username].get("holdings", {})
     if not holdings:
         console.print("[bold yellow]No holdings in portfolio.[/bold yellow]")
         return
@@ -19,31 +20,34 @@ def generate_insights():
     holding_values = {}
 
     for ticker, lots in holdings.items():
-        qty = sum(lot['qty'] for lot in lots)
+        qty = sum(int(lot.get('qty', 0)) for lot in lots)
         price = get_price(ticker)
         if price is None or qty == 0:
             continue
-        value = price * qty
+        value = float(price) * qty
         total_value += value
         holding_values[ticker] = value
+
         sector = lots[0].get('sector', 'Unknown') if lots else 'Unknown'
         sector_alloc[sector] = sector_alloc.get(sector, 0) + value
 
         pe = None
         for lot in lots:
-            if 'pe' in lot and lot['pe'] is not None and lot['pe'] > 0:
-                pe = lot['pe']
+            lot_pe = lot.get('pe')
+            if lot_pe is not None and lot_pe > 0:
+                pe = lot_pe
                 break
         if pe is not None:
             pe_sum += pe * value
             pe_weight += value
 
-    top_holdings = sorted(holding_values.items(), key=lambda x: x[1], reverse=True)
     avg_pe = round(pe_sum / pe_weight, 2) if pe_weight > 0 else 0
+    sector_percent = {k: round(v / total_value * 100, 2) for k, v in sector_alloc.items()} if total_value > 0 else {}
 
-    sector_percent = {k: round(v / total_value * 100, 2) for k, v in sector_alloc.items() if total_value > 0}
+    top_holdings = sorted(holding_values.items(), key=lambda x: x[1], reverse=True)
 
     insights = []
+
     if sector_percent:
         max_sector = max(sector_percent, key=sector_percent.get)
         if sector_percent[max_sector] > 50:
@@ -65,9 +69,11 @@ def generate_insights():
     console.print(f"[bold white]Sector Allocation (%):[/bold white] [bold cyan]{sector_percent}[/bold cyan]")
     console.print(f"[bold white]Top Holdings:[/bold white] [bold magenta]{[h[0] for h in top_holdings[:3]]}[/bold magenta]")
     console.print(f"[bold white]Weighted Avg P/E:[/bold white] [bold green]{avg_pe}[/bold green]")
+
     console.print("\n[bold underline white]Insights:[/bold underline white]")
     for insight in insights:
         color = "yellow" if "Warning" in insight else "green"
         console.print(f"- [{color}]{insight}[/{color}]")
+
     input("\nPress Enter to return to main menu...")
     return
