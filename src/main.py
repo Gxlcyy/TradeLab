@@ -1,65 +1,56 @@
+
 from time import sleep
 from os import name as os_name, system
-import json
-import utils
-import analytics
-import insights
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
+from pyfiglet import Figlet
+from rich.align import Align
+
+import storage
+from price_fetcher import PriceFetcher
+import utils
+import analytics
+import insights
 
 console = Console()
+f = Figlet(font='standard')
 
 PORTFOLIO_PATH = 'data/portfolio.json'
 LAST_USER_PATH = 'data/last_user.json'
 FIRST_RUN_PATH = 'data/first_run.json'
 
-def load_portfolios():
-    try:
-        with open(PORTFOLIO_PATH, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+# initialize shared services
+_store = storage.PortfolioStorage()
+_price_fetcher = PriceFetcher(ttl=60)
 
-def save_portfolios(portfolios):
-    with open(PORTFOLIO_PATH, 'w') as f:
-        json.dump(portfolios, f, indent=4)
+# initialize modules to use central storage and price fetcher
+utils.init(_store, _price_fetcher)
+analytics.init(_store, _price_fetcher)
+insights.init(_store, _price_fetcher)
 
-def set_last_user(username):
-    with open(LAST_USER_PATH, 'w') as f:
-        json.dump({"last_user": username}, f, indent=4)
-
-def get_last_user():
-    try:
-        with open(LAST_USER_PATH, 'r') as f:
-            data = json.load(f)
-            return data.get("last_user")
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
 
 def new_user():
     username = input("Enter a username for your account: ").strip()
-    portfolios = load_portfolios()
+    if not username:
+        console.print("[red]Username cannot be empty.[/red]")
+        return
+    portfolios = _store.load_portfolios()
     if username in portfolios:
         console.print(f"[yellow]User '{username}' already exists. Logging in...[/yellow]")
     else:
-        portfolios[username] = {
-            "name": username,
-            "cash_balance": 10000,
-            "holdings": {},
-        }
-        save_portfolios(portfolios)
+        _store.create_user_if_missing(username)
         console.print(f"[green]New user '{username}' created![/green]")
-    set_last_user(username)
+    _store.set_last_user(username)
     main_screen(username)
 
 def login_user():
-    portfolios = load_portfolios()
+    portfolios = _store.load_portfolios()
     username = input("Enter your username: ").strip()
     if username in portfolios:
-        set_last_user(username)
+        _store.set_last_user(username)
         main_screen(username)
     else:
         console.print(f"[red]User '{username}' not found. Please create a new account.[/red]")
@@ -67,24 +58,15 @@ def login_user():
         new_user()
 
 def reset_portfolio(username):
-    portfolios = load_portfolios()
-    portfolios[username] = {
-        "name": username,
-        "cash_balance": 10000,
-        "holdings": {},
-    }
-    save_portfolios(portfolios)
+    _store.reset_user(username)
     console.print(f"[bold yellow]Portfolio for '{username}' has been reset.[/bold yellow]")
     sleep(2)
     main_screen(username)
 
 def main_screen(username):
-    if os_name == 'nt':
-        _ = system('cls')
-    else:
-        _ = system('clear')
+    system('cls' if os_name == 'nt' else 'clear')
 
-    portfolios = load_portfolios()
+    portfolios = _store.load_portfolios()
     portfolio = portfolios.get(username)
     if not portfolio:
         console.print(f"[red]Portfolio for user '{username}' not found.[/red]")
@@ -95,29 +77,37 @@ def main_screen(username):
     user_name = portfolio.get("name")
     value = portfolio.get("cash_balance")
 
-    title = Text("TradeLab", style="bold magenta", justify="center")
+    banner = f.renderText('TradeLab')
+
+
+    banner = Text(banner, style="cyan")
     subtitle = Text("“Your personal investing terminal”", style="cyan", justify="center")
     welcome = Text(f"Welcome {user_name}", style="bold green", justify="center")
-    console.print(Panel.fit(title + "\n" + subtitle + "\n" + welcome, box=box.DOUBLE, width=50), justify="center")
+    console.print(Align(banner, align="center"))
+    console.print(subtitle + "\n" + welcome, justify="center")
 
     table = Table(show_header=False, box=box.SIMPLE, width=100, padding=(1,1))
     table.add_row(
         Text("User:", style="bold red"),
-        Text(user_name, style="bold"),
+        Text(user_name, style="bold cyan"),
         Text("Portfolio Value:", style="bold red"),
         Text(f"${analytics.portfolio_value(username)}", style="bold green"),
     )
+
+    portfolio_pnl = analytics.portfolio_pnl(username)
+    pnl_color = "green" if portfolio_pnl >= 0 else "red"
+
     table.add_row(
         Text("Cash Balance:", style="bold red"),
         Text(f"${value:,}", style="bold"),
         Text("Daily P/L:", style="bold red"),
-        Text(f"{analytics.portfolio_pnl(username)}%", style="bold green"),
+        Text(f"{portfolio_pnl}%", style=f"bold {pnl_color}"),
     )
     console.print(table, justify="center")
     console.rule("[bold blue]Commands[/bold blue]", style="blue",)
 
-    commands = Text("[portfolio] [buy] [sell] [risk] [value] [insights] [reset] [logout] [exit] [help]")
-    console.print(commands, style="yellow", justify="center", height=5)
+    commands_text = Text("[portfolio] [buy] [sell] [risk] [value] [insights] [reset] [logout] [exit] [help]")
+    console.print(commands_text, style="yellow", justify="center", height=5)
     console.rule(style="grey50")
 
     commands = {
@@ -134,10 +124,13 @@ def main_screen(username):
 
     while True:
         cmd = console.input("[bold cyan]> [/bold cyan]").strip().lower()
-        
+
         if cmd == "exit":
             console.print("[bold red]Exiting...[/bold red]")
             break
+
+        if not cmd:
+            continue
 
         base_cmd = cmd.split()[0]
 
@@ -164,9 +157,12 @@ def main_screen(username):
                     """)
                     input("Press Enter to return to main screen...")
                     main_screen(username)
+                    return
                 else:
+                    # preserve original behavior: pass username to functions that expect it
                     commands[base_cmd](username)
                     main_screen(username)
+                    return
             except Exception as e:
                 console.print(f"[red]Error:[/red] {e}")
             sleep(1)
@@ -174,32 +170,21 @@ def main_screen(username):
             console.print("[yellow]Unknown command. Type 'help' for available options.[/yellow]")
             sleep(1)
             main_screen(username)
-        
+            return
 
 if __name__ == "__main__":
-    if os_name == 'nt':
-        _ = system('cls')
-    else:
-        _ = system('clear')
+    system('cls' if os_name == 'nt' else 'clear')
 
-    try:
-        with open(FIRST_RUN_PATH, 'r') as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {"first_run": True}
-
-    if data.get("first_run", True):
+    if _store.is_first_run():
         console.print("[bold blue]Welcome to TradeLab![/bold blue]")
         console.print("[bold white]This seems to be your first time running the application.[/bold white]")
         console.print("[bold yellow]Please follow the setup instructions to configure your profile.[/bold yellow]")
-        data["first_run"] = False
-        with open(FIRST_RUN_PATH, 'w') as f:
-            json.dump(data, f, indent=4)
+        _store.set_first_run_false()
         sleep(3)
         new_user()
     else:
-        last_user = get_last_user()
-        if last_user and last_user in load_portfolios():
+        last_user = _store.get_last_user()
+        if last_user and last_user in _store.load_portfolios():
             console.print(f"[bold green]Auto-loading last user: {last_user}[/bold green]")
             sleep(1)
             main_screen(last_user)

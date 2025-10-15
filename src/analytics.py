@@ -1,27 +1,28 @@
-import yfinance as yf
-import json
-import numpy as np
 import json
 import numpy as np
 from rich.console import Console
 
 console = Console()
 
+_storage = None
+_price_fetcher = None
+
+def init(storage, price_fetcher):
+    global _storage, _price_fetcher
+    _storage = storage
+    _price_fetcher = price_fetcher
+
 def get_price(ticker):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period='1d')
-    if hist.empty or 'Close' not in hist or hist['Close'].empty:
-        console.print(f"[bold red]Error: No price data found for {ticker}.[/bold red]")
+    if _price_fetcher is None:
         return None
-    price = hist['Close'].iloc[0]
-    return float(round(price, 2))
+    return _price_fetcher.get_price(ticker)
 
 def portfolio_value(username):
     total = 0.0
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
-
-    holdings = portfolio[username].get("holdings", {})
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        return 0.0
+    holdings = portfolios[username].get("holdings", {})
     for ticker, lots in holdings.items():
         total_qty = sum(int(lot.get('qty', 0)) for lot in lots)
         price = get_price(ticker)
@@ -30,12 +31,11 @@ def portfolio_value(username):
         total += price * total_qty
     return round(total, 2)
 
-
 def portfolio_pnl(username):
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
-
-    holdings = portfolio[username].get("holdings", {})
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        return 0.0
+    holdings = portfolios[username].get("holdings", {})
     if not holdings:
         return 0.0
 
@@ -51,13 +51,15 @@ def portfolio_pnl(username):
         total_pnl += (current_price - avg_buy_price) * total_qty
     return round(total_pnl, 2)
 
-
 def portfolio_valuation(username):
     sp500_pe = 22
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        console.print("[bold red]User not found.[/bold red]")
+        input("Press Enter to return to main screen...")
+        return
 
-    holdings = portfolio[username].get("holdings", {})
+    holdings = portfolios[username].get("holdings", {})
     total_value = 0.0
     pe_sum = 0.0
 
@@ -69,7 +71,7 @@ def portfolio_valuation(username):
         value = price * qty
         total_value += value
         try:
-            stock = yf.Ticker(ticker)
+            stock = __import__("yfinance").Ticker(ticker)
             pe = stock.info.get('trailingPE')
             if pe is not None and pe > 0:
                 pe_sum += pe * value
@@ -89,13 +91,15 @@ def portfolio_valuation(username):
         console.print("[bold red]Insufficient data for DCF calculation.[/bold red]")
 
     input("Press Enter to return to main screen...")
-    return
 
 def portfolio_risk_metrics(username):
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        console.print("[bold red]User not found.[/bold red]")
+        input("Press Enter to return to main screen...")
+        return
 
-    holdings = portfolio[username].get("holdings", {})
+    holdings = portfolios[username].get("holdings", {})
     total_value = 0.0
     sector_alloc = {}
     betas = []
@@ -113,12 +117,16 @@ def portfolio_risk_metrics(username):
         sector = lots[0].get('sector', 'Unknown') if lots else 'Unknown'
         sector_alloc[sector] = sector_alloc.get(sector, 0) + value
 
-        beta = float(lots.get('beta', 1)) if 'beta' in lots[0] else 1
+        # beta - keep previous behaviour: try to read from lot metadata else default 1
+        try:
+            beta = float(lots[0].get('beta', 1))
+        except Exception:
+            beta = 1.0
         betas.append(beta)
         weights.append(value)
 
         try:
-            stock = yf.Ticker(ticker)
+            stock = __import__("yfinance").Ticker(ticker)
             hist = stock.history(period='1y')
             if not hist.empty and 'Close' in hist:
                 pct_returns = hist['Close'].pct_change().dropna()

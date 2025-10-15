@@ -1,4 +1,4 @@
-import yfinance as yf
+
 import json
 import time
 from rich.console import Console
@@ -7,43 +7,60 @@ from rich.text import Text
 
 console = Console()
 
+# These will be injected/constructed by main.py and imported modules
+_storage = None     # instance of PortfolioStorage
+_price_fetcher = None  # instance of PriceFetcher
+
+def init(storage, price_fetcher):
+    global _storage, _price_fetcher
+    _storage = storage
+    _price_fetcher = price_fetcher
+
 def get_price(ticker):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period='1d')
-    if hist.empty or 'Close' not in hist or hist['Close'].empty:
-        console.print(f"[bold red]Error: No price data found for {ticker}.[/bold red]")
+    if _price_fetcher is None:
+        console.print("[bold red]Price fetcher not initialized.[/bold red]")
         return None
-    price = hist['Close'].iloc[0]
-    return float(round(price, 2))
+    return _price_fetcher.get_price(ticker)
 
 def buy(username):
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        console.print(f"[bold red]User '{username}' not found. [/bold red]")
+        return
+
     ticker = input("Enter ticker symbol to buy: ").strip().upper()
     price = get_price(ticker)
+    console.print(f"[bold white]Current Ticker Price:[/bold white] [bold cyan]{price}[/bold cyan]")
     if price is None:
         console.print("[bold red]Purchase aborted due to unavailable price.[/bold red]")
+        input("Press Enter to return to main menu...")
         return
-    price = float(price)
-    console.print(f"[bold white]Current Ticker Price:[/bold white] [bold cyan]{price}[/bold cyan]")
-
-    qty = int(input("Enter quantity to buy: ").strip())
 
     try:
-        stock = yf.Ticker(ticker)
+        qty = int(input("Enter quantity to buy: ").strip())
+        if qty <= 0:
+            console.print("[bold red]Quantity must be positive.[/bold red]")
+            input("Press Enter to return to main menu...")
+            return
+    except ValueError:
+        console.print("[bold red]Invalid quantity.[/bold red]")
+        input("Press Enter to return to main menu...")
+        return
+
+    try:
+        stock = __import__("yfinance").Ticker(ticker)
         sector = stock.info.get('sector', 'Unknown')
     except Exception:
         sector = 'Unknown'
 
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
-
-
-    user_data = portfolio[username]
+    user_data = portfolios[username]
     cash_balance = float(user_data.get("cash_balance", 0.0))
     holdings = user_data.get("holdings", {})
 
     total_cost = price * qty
     if total_cost > cash_balance:
         console.print("[bold red]Insufficient funds to complete purchase.[/bold red]")
+        input("Press Enter to return to main menu...")
         return
 
     cash_balance -= total_cost
@@ -56,30 +73,27 @@ def buy(username):
         "sector": sector
     })
 
-    portfolio[username]["cash_balance"] = cash_balance
-    portfolio[username]["holdings"] = holdings
-
-    with open('data/portfolio.json', 'w') as f:
-        json.dump(portfolio, f, indent=4)
+    user_data["cash_balance"] = cash_balance
+    user_data["holdings"] = holdings
+    _storage.update_user(username, user_data)
 
     console.print(f"[bold green]Successfully purchased {qty} shares of {ticker} at {price:.2f}![/bold green]")
     input("Press Enter to return to main menu...")
-
+    return
 
 def sell(username):
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
-    
-    if username not in portfolio:
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
         console.print(f"[bold red]User '{username}' not found in portfolio.[/bold red]")
         return
 
-    user_data = portfolio[username]
+    user_data = portfolios[username]
     cash_balance = float(user_data.get("cash_balance", 0.0))
     holdings = user_data.get("holdings", {})
 
     if not holdings:
         console.print("[bold yellow]You have no assets to sell.[/bold yellow]")
+        input("Press Enter to return to main menu...")
         return
 
     console.print("[bold white]Your current assets:[/bold white]")
@@ -94,19 +108,30 @@ def sell(username):
     ticker = input("Enter ticker symbol to sell: ").strip().upper()
     if ticker not in holdings or sum(int(lot['qty']) for lot in holdings[ticker]) == 0:
         console.print("[bold red]You don't own any of that ticker.[/bold red]")
+        input("Press Enter to return to main menu...")
         return
 
     price = get_price(ticker)
     if price is None:
         console.print("[bold red]Sale aborted due to unavailable price.[/bold red]")
+        input("Press Enter to return to main menu...")
         return
     price = float(round(price, 2))
     console.print(f"[bold white]Current Ticker Price:[/bold white] [bold cyan]{price}[/bold cyan]")
 
-    qty = int(input("Enter quantity to sell: ").strip())
+    try:
+        qty = int(input("Enter quantity to sell: ").strip())
+        if qty <= 0:
+            raise ValueError
+    except ValueError:
+        console.print("[bold red]Invalid quantity.[/bold red]")
+        input("Press Enter to return to main menu...")
+        return
+
     total_qty = sum(int(lot['qty']) for lot in holdings[ticker])
     if qty > total_qty:
         console.print("[bold red]You don't have that many shares to sell.[/bold red]")
+        input("Press Enter to return to main menu...")
         return
 
     qty_to_sell = qty
@@ -128,11 +153,9 @@ def sell(username):
     if not lots:
         del holdings[ticker]
 
-    portfolio[username]["cash_balance"] = cash_balance
-    portfolio[username]["holdings"] = holdings
-
-    with open('data/portfolio.json', 'w') as f:
-        json.dump(portfolio, f, indent=4)
+    user_data["cash_balance"] = cash_balance
+    user_data["holdings"] = holdings
+    _storage.update_user(username, user_data)
 
     console.print(f"[bold green]Sold {qty} shares of {ticker} at ${price} per share.[/bold green]")
     for lot in sold_lots:
@@ -141,20 +164,14 @@ def sell(username):
         console.print(f"  - {lot['qty']} shares bought at ${lot['buy_price']} | P/L per share: [{color}]${diff}[/{color}]")
 
     input("Press Enter to return to main menu...")
-    return
 
 def portfolio(username):
-    from rich.table import Table
-    from rich.text import Text
-
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
-    
-    if username not in portfolio:
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
         console.print(f"[bold red]User '{username}' not found in portfolio.[/bold red]")
         return
 
-    user_data = portfolio[username]
+    user_data = portfolios[username]
     holdings = user_data.get("holdings", {})
 
     if not holdings:
@@ -173,9 +190,7 @@ def portfolio(username):
         ) if total_qty > 0 else 0
 
         current_price = get_price(ticker)
-        if current_price is None:
-            current_price = 0.0
-        current_price = float(round(current_price, 2))
+        current_price = float(round(current_price, 2)) if current_price is not None else 0.0
         value = round(current_price * total_qty, 2)
         total_value += value
 

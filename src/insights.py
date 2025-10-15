@@ -1,16 +1,33 @@
+
 import json
-from utils import get_price
 from rich.console import Console
 
 console = Console()
 
-def generate_insights(username):
-    with open('data/portfolio.json', 'r') as f:
-        portfolio = json.load(f)
+_storage = None
+_price_fetcher = None
 
-    holdings = portfolio[username].get("holdings", {})
+def init(storage, price_fetcher):
+    global _storage, _price_fetcher
+    _storage = storage
+    _price_fetcher = price_fetcher
+
+def get_price(ticker):
+    if _price_fetcher is None:
+        return None
+    return _price_fetcher.get_price(ticker)
+
+def generate_insights(username):
+    portfolios = _storage.load_portfolios()
+    if username not in portfolios:
+        console.print(f"[bold red]User '{username}' not found.[/bold red]")
+        input("Press Enter to return to main menu...")
+        return
+
+    holdings = portfolios[username].get("holdings", {})
     if not holdings:
         console.print("[bold yellow]No holdings in portfolio.[/bold yellow]")
+        input("Press Enter to return to main menu...")
         return
 
     total_value = 0.0

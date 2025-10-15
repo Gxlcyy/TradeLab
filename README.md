@@ -49,7 +49,9 @@ TradeLab/
 │   ├── main.py            # Entry point
 │   ├── analytics.py       # Risk, valuation, and metrics
 │   ├── insights.py        # Rule-based insights engine
-│   └── utils.py           # Helper functions
+│   ├── utils.py           # Basic functions
+│   ├── price_fetcher.py   # Cache prices
+│   └── storage.py         # Load/Save functions
 ├── requirements.txt       # Python dependencies
 ├── README.md
 └── LICENSE
